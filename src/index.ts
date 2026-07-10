@@ -22,6 +22,12 @@ const R2_ACCESS_KEY_ID = requireEnv('R2_ACCESS_KEY_ID');
 const R2_SECRET_ACCESS_KEY = requireEnv('R2_SECRET_ACCESS_KEY');
 const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME ?? 'discord-archive';
 const R2_PUBLIC_URL = requireEnv('R2_PUBLIC_URL');
+const ARCHIVED_BOT_IDS = new Set(
+  (process.env.DISCORD_ARCHIVED_BOT_IDS ?? '1454145423315828736')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
+);
 
 // --- Init ---
 
@@ -45,7 +51,9 @@ const client = new Client({
 // --- Message handler ---
 
 async function handleMessage(message: Message): Promise<void> {
-  if (message.author.bot) return;
+  // Keep third-party bot noise out of the archive, but retain AI Nikechan's
+  // own replies so Discord history search has both sides of the conversation.
+  if (message.author.bot && !ARCHIVED_BOT_IDS.has(message.author.id)) return;
 
   const channelId = message.channel.id;
   const channelName = 'name' in message.channel ? (message.channel.name ?? null) : null;
