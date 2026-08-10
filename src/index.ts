@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { Client, GatewayIntentBits, Message } from 'discord.js';
+import { Client, GatewayIntentBits, Message, Partials } from 'discord.js';
 import { initDb, saveUser, saveChannel, saveMessage, type Attachment } from './db.js';
 import { initR2, uploadAttachment, getAttachmentType } from './r2.js';
 
@@ -46,6 +46,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
   ],
+  partials: [Partials.Channel, Partials.Message],
 });
 
 // --- Message handler ---
@@ -116,6 +117,18 @@ client.once('ready', (c) => {
 });
 
 client.on('messageCreate', handleMessage);
+
+// Discord Bot replies are initially sent as a short progress message and then
+// edited into the final response. Re-run the idempotent upsert on edits so the
+// archive stores the final visible text instead of the pre-edit placeholder.
+client.on('messageUpdate', async (_oldMessage, newMessage) => {
+  try {
+    const resolved = newMessage.partial ? await newMessage.fetch() : newMessage;
+    await handleMessage(resolved);
+  } catch (err) {
+    console.error(`[ERROR] Failed to process updated message ${newMessage.id}:`, err);
+  }
+});
 
 // --- Graceful shutdown ---
 
