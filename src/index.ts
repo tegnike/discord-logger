@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import path from 'node:path';
 import { ArchiveOutbox } from './archive-outbox.js';
-import { refreshMemoryPolicy } from './memory-policy.js';
+import { refreshMemoryPolicy, createPolicyRefresher } from './memory-policy.js';
 import { Client, GatewayIntentBits, Message, Partials } from 'discord.js';
 import { initDb, saveUser, saveChannel, saveMessage, type Attachment } from './db.js';
 import { initR2, uploadAttachment, getAttachmentType } from './r2.js';
@@ -97,14 +97,20 @@ void drainArchive();
 // --- Event listeners ---
 
 let policyTimer: ReturnType<typeof setInterval> | null = null;
-client.once('ready', (c) => {
-  const contractPath = process.env.DISCORD_CHARACTER_MEMORY_POLICY_FILE;
+const contractPath = process.env.DISCORD_CHARACTER_MEMORY_POLICY_FILE;
+const refreshPolicy = createPolicyRefresher(async () => {
+  if (!contractPath) return;
+  try { await refreshMemoryPolicy(client, contractPath); }
+  catch { console.error("[MEMORY] Policy refresh failed; existing leases will expire"); }
+});
+// A periodic refresh covers missed events and reconnects; permission changes
+// also trigger a refresh immediately, rather than waiting for that interval.
+for (const event of ["channelUpdate", "channelDelete", "roleUpdate", "roleDelete", "guildUpdate", "guildDelete", "guildUnavailable", "guildMemberUpdate"] as const) {
+  client.on(event, () => { if (contractPath) void refreshPolicy(); });
+}
+client.once("ready", (c) => {
   if (contractPath) {
-    const refresh = async () => {
-      try { await refreshMemoryPolicy(client, contractPath); }
-      catch { console.error('[MEMORY] Policy refresh failed; existing leases will expire'); }
-    };
-    void refresh(); policyTimer = setInterval(() => { void refresh(); }, 5 * 60_000);
+    void refreshPolicy(); policyTimer = setInterval(() => { void refreshPolicy(); }, 5 * 60_000);
   }
   console.log(`Logged in as ${c.user.tag}`);
   console.log(`Watching ${c.guilds.cache.size} guild(s)`);

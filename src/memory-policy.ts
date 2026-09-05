@@ -52,3 +52,19 @@ export async function refreshMemoryPolicy(client: Client, contractPath: string):
   const { error } = await getDb().rpc('memory_publish_policy_v1', { p_policy: deriveMemoryPolicy(contract, readable) });
   if (error) throw Error(`Memory policy refresh failed: ${error.code}`);
 }
+
+// Coalesce bursts, serialize publications, and recheck if permissions changed
+// during an in-flight fetch. An older request must not finish after a newer one.
+export function createPolicyRefresher(refresh: () => Promise<void>): () => Promise<void> {
+  let running: Promise<void> | null = null;
+  let dirty = false;
+  return () => {
+    dirty = true;
+    if (running) return running;
+    running = (async () => {
+      try { while (dirty) { dirty = false; await refresh(); } }
+      finally { running = null; }
+    })();
+    return running;
+  };
+}
