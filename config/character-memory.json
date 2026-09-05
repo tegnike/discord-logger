@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "guildId": "1404689195150217217",
+  "discordChannels": [
+    "1404724174890602496"
+  ],
+  "twitterArchiveApproved": true,
+  "allowLegacyDiscordAuthor": true,
+  "runtimeModes": {
+    "discord-public": "shadow",
+    "x-public": "shadow"
+  },
+  "routes": {
+    "discord-public": {
+      "discord:channel:1404724174890602496": [
+        "discord:channel:1404724174890602496",
+        "twitter:public"
+      ]
+    },
+    "x-public": {
+      "twitter:public": [
+        "discord:channel:1404724174890602496",
+        "twitter:public"
+      ]
+    }
+  },
+  "excludedSources": [
+    "local_episodes",
+    "contact_episodes",
+    "codex_project_work_logs",
+    "memory_chunks",
+    "twitter_activity_logs"
+  ],
+  "notes": "Approved public community home channel only. Its ordinary Member role is the audience; @everyone cannot read this server. Do not infer approval for other Member-readable channels. Cross-surface routes are explicitly authorized by the master. Runtime checks audience and bot permissions on changes and every five minutes, expiring within ten minutes. Native Discord deletion retains archives. No private work logs or automatic identity verification.",
+  "discordPublicAudienceRoleIds": [
+    "1404689195150217218"
+  ]
+}

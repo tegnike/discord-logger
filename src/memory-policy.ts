@@ -5,7 +5,7 @@ import { getDb } from './db.js';
 
 type Contract = {
   version: number; guildId: string; discordChannels: string[]; twitterArchiveApproved: boolean;
-  allowLegacyDiscordAuthor: boolean; runtimeModes: Record<string, 'shadow' | 'live'>;
+  discordPublicAudienceRoleIds?: string[]; allowLegacyDiscordAuthor: boolean; runtimeModes: Record<string, 'shadow' | 'live'>;
   routes: Record<string, Record<string, string[]>>;
 };
 export function deriveMemoryPolicy(contract: Contract, readable: Set<string>, now = Date.now()) {
@@ -41,9 +41,16 @@ export async function refreshMemoryPolicy(client: Client, contractPath: string):
     for (const id of contract.discordChannels) {
       const channel = channels.get(id);
       if (!channel || !client.user || !('permissionsFor' in channel)) continue;
-      const audience = channel.permissionsFor(guild.roles.everyone);
+      // Only the core contract can nominate the ordinary community audience.
+      // Never infer public approval from an arbitrary role that happens to read.
+      const audienceIds = contract.discordPublicAudienceRoleIds ?? [guild.id];
+      const audienceReadable = audienceIds.length > 0 && audienceIds.every(roleId => {
+        const role = guild.roles.cache.get(roleId);
+        return role && !role.permissions.has(PermissionFlagsBits.Administrator) &&
+          channel.permissionsFor(role)?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory]);
+      });
       const bot = channel.permissionsFor(client.user);
-      if (audience?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory]) && bot?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory])) readable.add(id);
+      if (audienceReadable && bot?.has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory])) readable.add(id);
     }
   } catch {
     // Failure shrinks to independently approved X archive only. Never renew
