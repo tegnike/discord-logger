@@ -1,4 +1,7 @@
 import 'dotenv/config';
+import path from 'node:path';
+import { ArchiveOutbox } from './archive-outbox.js';
+import { refreshMemoryPolicy } from './memory-policy.js';
 import { Client, GatewayIntentBits, Message, Partials } from 'discord.js';
 import { initDb, saveUser, saveChannel, saveMessage, type Attachment } from './db.js';
 import { initR2, uploadAttachment, getAttachmentType } from './r2.js';
@@ -51,67 +54,58 @@ const client = new Client({
 
 // --- Message handler ---
 
-async function handleMessage(message: Message): Promise<void> {
-  // Keep third-party bot noise out of the archive, but retain AI Nikechan's
-  // own replies so Discord history search has both sides of the conversation.
-  if (message.author.bot && !ARCHIVED_BOT_IDS.has(message.author.id)) return;
-
-  const channelId = message.channel.id;
-  const channelName = 'name' in message.channel ? (message.channel.name ?? null) : null;
-  const guildId = message.guildId;
-
-  try {
-    // 1. Save channel
-    if (guildId && channelName) {
-      await saveChannel(channelId, guildId, channelName);
-    }
-
-    // 2. Save user
-    const userId = await saveUser(
-      message.author.id,
-      message.author.displayName,
-      message.author.username,
-      message.member?.nickname ?? null
-    );
-
-    // 3. Upload attachments to R2
-    const attachments: Attachment[] = [];
-    for (const [, att] of message.attachments) {
-      try {
-        const r2Url = await uploadAttachment(
-          att.url,
-          channelId,
-          message.id,
-          att.name ?? 'unknown'
-        );
-        const type = getAttachmentType(att.contentType ?? '', att.name ?? '');
-        attachments.push({ type, url: r2Url, filename: att.name ?? 'unknown' });
-      } catch (err) {
-        console.error(`[R2] Failed to upload ${att.name}:`, err);
-        // Fallback: save Discord CDN URL
-        const type = getAttachmentType(att.contentType ?? '', att.name ?? '');
-        attachments.push({ type, url: att.url, filename: att.name ?? 'unknown' });
-      }
-    }
-
-    // 4. Save message to DB
-    await saveMessage({
-      messageId: message.id,
-      channelId,
-      userId,
-      replyToMessageId: message.reference?.messageId ?? null,
-      content: message.content || null,
-      attachments,
-      messageAt: message.createdAt,
-    });
-  } catch (err) {
-    console.error(`[ERROR] Failed to process message ${message.id}:`, err);
-  }
+interface ArchivedMessage {
+  messageId: string; channelId: string; channelName: string | null; guildId: string | null;
+  nativeAuthorId: string; displayName: string; username: string; guildNickname: string | null;
+  replyToMessageId: string | null; content: string | null; messageAt: string; editedAt: string | null;
+  attachments: Array<{ url: string; name: string; contentType: string }>;
 }
+async function persistArchived(message: ArchivedMessage): Promise<void> {
+  if (message.guildId && message.channelName) await saveChannel(message.channelId, message.guildId, message.channelName);
+  const userId = await saveUser(message.nativeAuthorId, message.displayName, message.username, message.guildNickname);
+  const attachments: Attachment[] = [];
+  for (const att of message.attachments) {
+    let url = att.url;
+    try { url = await uploadAttachment(att.url, message.channelId, message.messageId, att.name); }
+    catch { console.error('[R2] Attachment upload failed; retaining CDN reference'); }
+    attachments.push({ type: getAttachmentType(att.contentType, att.name), url, filename: att.name });
+  }
+  await saveMessage({ ...message, userId, attachments,
+    messageAt: new Date(message.messageAt), editedAt: message.editedAt ? new Date(message.editedAt) : null });
+}
+const outbox = new ArchiveOutbox<ArchivedMessage>(path.resolve(process.env.DISCORD_ARCHIVE_OUTBOX_DIR ?? '.state/archive-outbox'), persistArchived);
+async function drainArchive(): Promise<void> {
+  try { await outbox.drain(); }
+  catch { console.error('[ARCHIVE] Save failed; durable batch retained for retry'); }
+}
+async function handleMessage(message: Message): Promise<void> {
+  if (message.author.bot && !ARCHIVED_BOT_IDS.has(message.author.id)) return;
+  try {
+    await outbox.enqueue({ messageId: message.id, channelId: message.channelId,
+      channelName: 'name' in message.channel ? message.channel.name : null, guildId: message.guildId,
+      nativeAuthorId: message.author.id, displayName: message.author.displayName, username: message.author.username,
+      guildNickname: message.member?.nickname ?? null, replyToMessageId: message.reference?.messageId ?? null,
+      content: message.content || null, messageAt: message.createdAt.toISOString(), editedAt: message.editedAt?.toISOString() ?? null,
+      attachments: [...message.attachments.values()].map(a => ({ url: a.url, name: a.name ?? 'unknown', contentType: a.contentType ?? '' })),
+    });
+    await drainArchive();
+  } catch { console.error(`[ARCHIVE] Could not durably queue message ${message.id}`); }
+}
+const retryTimer = setInterval(() => { void drainArchive(); }, 30_000);
+void drainArchive();
 
 // --- Event listeners ---
 
+let policyTimer: ReturnType<typeof setInterval> | null = null;
 client.once('ready', (c) => {
+  const contractPath = process.env.DISCORD_CHARACTER_MEMORY_POLICY_FILE;
+  if (contractPath) {
+    const refresh = async () => {
+      try { await refreshMemoryPolicy(client, contractPath); }
+      catch { console.error('[MEMORY] Policy refresh failed; existing leases will expire'); }
+    };
+    void refresh(); policyTimer = setInterval(() => { void refresh(); }, 5 * 60_000);
+  }
   console.log(`Logged in as ${c.user.tag}`);
   console.log(`Watching ${c.guilds.cache.size} guild(s)`);
 });
@@ -134,6 +128,8 @@ client.on('messageUpdate', async (_oldMessage, newMessage) => {
 
 function shutdown(): void {
   console.log('Shutting down...');
+  clearInterval(retryTimer);
+  if (policyTimer) clearInterval(policyTimer);
   client.destroy();
   process.exit(0);
 }

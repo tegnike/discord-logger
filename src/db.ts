@@ -63,7 +63,6 @@ export async function saveChannel(
     );
 
   if (error) {
-    if (error.code === '23505') return;
     throw new Error(`saveChannel failed: ${error.message}`);
   }
 }
@@ -84,27 +83,22 @@ export interface SaveMessageInput {
   content: string | null;
   attachments: Attachment[];
   messageAt: Date;
+  nativeAuthorId: string;
+  editedAt: Date | null;
 }
 
 export async function saveMessage(input: SaveMessageInput): Promise<void> {
-  const { error } = await getDb()
-    .from('discord_messages')
-    .upsert(
-      {
-        message_id: input.messageId,
-        channel_id: input.channelId,
-        user_id: input.userId,
-        reply_to_message_id: input.replyToMessageId,
-        content: input.content,
-        attachments: input.attachments,
-        message_at: input.messageAt.toISOString(),
-      },
-      { onConflict: 'message_id' }
-    );
-
-  if (error) {
-    // UNIQUE制約違反は無視（重複メッセージ）
-    if (error.code === '23505') return;
-    throw new Error(`saveMessage failed: ${error.message}`);
-  }
+  const row = {
+    message_id: input.messageId, channel_id: input.channelId, user_id: input.userId,
+    reply_to_message_id: input.replyToMessageId, content: input.content,
+    attachments: input.attachments, message_at: input.messageAt.toISOString(),
+  };
+  // Enabled only after the RPC migration passes deployment acceptance.
+  const result = process.env.DISCORD_CHARACTER_MEMORY_INGEST === 'true'
+    ? await getDb().rpc('memory_ingest_discord_message_v1', {
+      p_message: row, p_native_author: input.nativeAuthorId,
+      p_edited_at: input.editedAt?.toISOString() ?? null,
+    })
+    : await getDb().from('discord_messages').upsert(row, { onConflict: 'message_id' });
+  if (result.error) throw new Error(`saveMessage failed: ${result.error.code}`);
 }
