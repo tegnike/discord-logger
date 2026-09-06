@@ -2,37 +2,54 @@
   "version": 1,
   "guildId": "1404689195150217217",
   "discordChannels": [
-    "1404724174890602496"
+    "1404689196442194053", "1404689197599690842", "1404689197599690843", "1404689197599690844",
+    "1404689198547472385", "1404689204746649600", "1404689205371736171", "1404689205946224713",
+    "1404724174890602496", "1404725678393393152", "1405539907375730690", "1408786727916802171",
+    "1408930951026835597", "1409057989230334042", "1409167667654561913", "1409792785740988456",
+    "1410271109357637684", "1411588513710739506", "1411632124678635610", "1411990788421713961",
+    "1412193079401910333", "1412673811278594118", "1413663235135111239", "1415696917106655322",
+    "1417140482529562664", "1418616583152079060", "1419031268418523186", "1419248991304159262",
+    "1421457650855710791", "1435186227107074089", "1435972843853840384", "1440771621664329828",
+    "1442180684738199724", "1452811457925480580", "1471084035487826072", "1472218747614920878",
+    "1481186992288038932", "1485014755034009764", "1486009204874543254", "1520384191353851984",
+    "1522558514877173820", "1536260480165744650", "1536266669419135029", "1544645373199650906",
+    "1545445398183936010", "1545892288041984100"
   ],
+  "discordPublicAudienceRoleIds": ["1404689195150217218"],
   "twitterArchiveApproved": true,
-  "allowLegacyDiscordAuthor": true,
-  "runtimeModes": {
-    "discord-public": "shadow",
-    "x-public": "shadow"
-  },
+  "allowLegacyDiscordAuthor": false,
+  "runtimeModes": { "discord-public": "shadow", "x-public": "shadow" },
   "routes": {
     "discord-public": {
       "discord:channel:1404724174890602496": [
-        "discord:channel:1404724174890602496",
+        "discord:channel:1404689196442194053", "discord:channel:1404689197599690842",
+        "discord:channel:1404689197599690843", "discord:channel:1404689197599690844",
+        "discord:channel:1404689198547472385", "discord:channel:1404689204746649600",
+        "discord:channel:1404689205371736171", "discord:channel:1404689205946224713",
+        "discord:channel:1404724174890602496", "discord:channel:1404725678393393152",
+        "discord:channel:1405539907375730690", "discord:channel:1408786727916802171",
+        "discord:channel:1408930951026835597", "discord:channel:1409057989230334042",
+        "discord:channel:1409167667654561913", "discord:channel:1409792785740988456",
+        "discord:channel:1410271109357637684", "discord:channel:1411588513710739506",
+        "discord:channel:1411632124678635610", "discord:channel:1411990788421713961",
+        "discord:channel:1412193079401910333", "discord:channel:1412673811278594118",
+        "discord:channel:1413663235135111239", "discord:channel:1415696917106655322",
+        "discord:channel:1417140482529562664", "discord:channel:1418616583152079060",
+        "discord:channel:1419031268418523186", "discord:channel:1419248991304159262",
+        "discord:channel:1421457650855710791", "discord:channel:1435186227107074089",
+        "discord:channel:1435972843853840384", "discord:channel:1440771621664329828",
+        "discord:channel:1442180684738199724", "discord:channel:1452811457925480580",
+        "discord:channel:1471084035487826072", "discord:channel:1472218747614920878",
+        "discord:channel:1481186992288038932", "discord:channel:1485014755034009764",
+        "discord:channel:1486009204874543254", "discord:channel:1520384191353851984",
+        "discord:channel:1522558514877173820", "discord:channel:1536260480165744650",
+        "discord:channel:1536266669419135029", "discord:channel:1544645373199650906",
+        "discord:channel:1545445398183936010", "discord:channel:1545892288041984100",
         "twitter:public"
       ]
     },
     "x-public": {
-      "twitter:public": [
-        "discord:channel:1404724174890602496",
-        "twitter:public"
-      ]
+      "twitter:public": ["discord:channel:1404724174890602496", "twitter:public"]
     }
-  },
-  "excludedSources": [
-    "local_episodes",
-    "contact_episodes",
-    "codex_project_work_logs",
-    "memory_chunks",
-    "twitter_activity_logs"
-  ],
-  "notes": "Approved public community home channel only. Its ordinary Member role is the audience; @everyone cannot read this server. Do not infer approval for other Member-readable channels. Cross-surface routes are explicitly authorized by the master. Runtime checks audience and bot permissions on changes and every five minutes, expiring within ten minutes. Native Discord deletion retains archives. No private work logs or automatic identity verification.",
-  "discordPublicAudienceRoleIds": [
-    "1404689195150217218"
-  ]
+  }
 }
