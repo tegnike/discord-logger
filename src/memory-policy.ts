@@ -6,6 +6,7 @@ import { getDb } from './db.js';
 type Contract = {
   version: number; guildId: string; discordChannels: string[]; twitterArchiveApproved: boolean;
   discordPublicAudienceRoleIds?: string[]; allowLegacyDiscordAuthor: boolean; runtimeModes: Record<string, 'shadow' | 'live'>;
+  discordAllPublicDestinations?: boolean;
   routes: Record<string, Record<string, string[]>>;
 };
 type DiscordAudience = 'public' | 'restricted';
@@ -32,6 +33,18 @@ export function deriveMemoryPolicy(contract: Contract, readable: Map<string, Dis
         (scopes[source] as { audience?: string } | undefined)?.audience === 'public');
     }
     runtimes[runtime] = { mode, destinations };
+  }
+  if (contract.discordAllPublicDestinations === true) {
+    const mode = contract.runtimeModes['discord-public'];
+    if (!['shadow', 'live'].includes(mode)) throw Error('Invalid memory mode');
+    const publicScopes = Object.entries(scopes)
+      .filter(([, scope]) => (scope as { audience?: string }).audience === 'public')
+      .map(([scope]) => scope);
+    const destinations = Object.fromEntries(
+      publicScopes.filter(scope => scope.startsWith('discord:channel:'))
+        .map(destination => [destination, [...publicScopes]]),
+    );
+    runtimes['discord-public'] = { mode, destinations };
   }
   return { core_config_hash: createHash('sha256').update(JSON.stringify(contract)).digest('hex'), scopes, runtimes };
 }

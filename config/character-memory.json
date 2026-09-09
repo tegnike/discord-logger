@@ -18,7 +18,8 @@
   "discordPublicAudienceRoleIds": ["1404689195150217218"],
   "twitterArchiveApproved": true,
   "allowLegacyDiscordAuthor": false,
-  "runtimeModes": { "discord-public": "shadow", "x-public": "shadow" },
+  "discordAllPublicDestinations": true,
+  "runtimeModes": { "discord-public": "live", "x-public": "shadow" },
   "routes": {
     "discord-public": {
       "discord:channel:1404724174890602496": [

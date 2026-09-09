@@ -22,6 +22,18 @@ test('restricted channels are processed but excluded from public runtime routes'
  assert.deepEqual(p.runtimes['discord-public'].destinations,{});
  assert.deepEqual(p.runtimes['x-public'].destinations['twitter:public'],['twitter:public']);
 });
+test('live Discord policy expands every currently public destination and excludes restricted channels',()=>{
+ const expanded={...contract,discordChannels:['2','3'],discordAllPublicDestinations:true,
+  runtimeModes:{...contract.runtimeModes,'discord-public':'live'}};
+ const p=deriveMemoryPolicy(expanded,new Map([['2','public'],['3','restricted']]),0);
+ assert.equal(p.runtimes['discord-public'].mode,'live');
+ assert.deepEqual(Object.keys(p.runtimes['discord-public'].destinations),['discord:channel:2']);
+ assert.deepEqual(p.runtimes['discord-public'].destinations['discord:channel:2'],[
+  'discord:channel:2','twitter:public',
+ ]);
+ assert.equal(p.runtimes['discord-public'].destinations['discord:channel:3'],undefined);
+});
+
 
 
 test("permission changes during refresh trigger a serialized fresh publication", async () => {
