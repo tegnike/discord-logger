@@ -102,3 +102,35 @@ export async function saveMessage(input: SaveMessageInput): Promise<void> {
     : await getDb().from('discord_messages').upsert(row, { onConflict: 'message_id' });
   if (result.error) throw new Error(`saveMessage failed: ${result.error.code}`);
 }
+
+export function replaceAttachmentUrl(
+  attachments: Attachment[], filename: string, sourceUrl: string, archivedUrl: string
+): { attachments: Attachment[]; changed: boolean } {
+  let changed = false;
+  const next = attachments.map((attachment) => {
+    if (attachment.filename !== filename || attachment.url !== sourceUrl) return attachment;
+    changed = true;
+    return { ...attachment, url: archivedUrl };
+  });
+  return { attachments: next, changed };
+}
+
+export async function saveRetriedAttachment(input: {
+  messageId: string; filename: string; sourceUrl: string; archivedUrl: string;
+}): Promise<void> {
+  const { data, error } = await getDb().from('discord_messages')
+    .select('attachments').eq('message_id', input.messageId).maybeSingle();
+  if (error) throw new Error(`loadMessageAttachments failed: ${error.code}`);
+  // The retry can race the initial message write. Retain the durable job until
+  // a later drain can observe the saved message.
+  if (!data) throw new Error('loadMessageAttachments failed: message_not_found');
+  const current = Array.isArray(data.attachments) ? data.attachments as Attachment[] : [];
+  const replacement = replaceAttachmentUrl(current, input.filename, input.sourceUrl, input.archivedUrl);
+  if (!replacement.changed) return;
+  const result = process.env.DISCORD_CHARACTER_MEMORY_INGEST === 'true'
+    ? await getDb().rpc('memory_update_discord_attachments_v1', {
+      p_message_id: input.messageId, p_attachments: replacement.attachments,
+    })
+    : await getDb().from('discord_messages').update({ attachments: replacement.attachments }).eq('message_id', input.messageId);
+  if (result.error) throw new Error(`saveRetriedAttachment failed: ${result.error.code}`);
+}

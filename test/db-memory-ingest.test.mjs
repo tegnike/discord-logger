@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { replaceAttachmentUrl } from '../dist/db.js';
 import { initDb, saveMessage } from '../dist/db.js';
 const input={messageId:'123',channelId:'4',userId:'user',nativeAuthorId:'5',replyToMessageId:null,content:'fixture',attachments:[],messageAt:new Date('2026-09-06T00:00:00Z'),editedAt:new Date('2026-09-06T01:00:00Z')};
 test('memory ingestion transmits native author and edit timestamp in one RPC',async()=>{
@@ -20,4 +21,14 @@ test('database errors cannot falsely acknowledge a queued message',async()=>{
   globalThis.fetch=async()=>new Response(JSON.stringify({code:'23505',message:'conflict'}),{status:409});
   initDb('https://fixture.invalid','fixture-key');await assert.rejects(saveMessage(input),/23505/);
  }finally{globalThis.fetch=original;}
+});
+test('attachment retry replaces only the matching CDN reference', () => {
+  const current = [
+    { type: 'image', filename: 'a.png', url: 'https://cdn/a' },
+    { type: 'file', filename: 'b.txt', url: 'https://cdn/b' },
+  ];
+  const result = replaceAttachmentUrl(current, 'a.png', 'https://cdn/a', 'https://r2/a');
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.attachments.map(item => item.url), ['https://r2/a', 'https://cdn/b']);
+  assert.equal(replaceAttachmentUrl(result.attachments, 'a.png', 'https://cdn/a', 'https://r2/a').changed, false);
 });

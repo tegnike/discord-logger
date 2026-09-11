@@ -3,7 +3,7 @@ import path from 'node:path';
 import { ArchiveOutbox } from './archive-outbox.js';
 import { refreshMemoryPolicy, createPolicyRefresher } from './memory-policy.js';
 import { Client, GatewayIntentBits, Message, Partials } from 'discord.js';
-import { initDb, saveUser, saveChannel, saveMessage, type Attachment } from './db.js';
+import { initDb, saveUser, saveChannel, saveMessage, saveRetriedAttachment, type Attachment } from './db.js';
 import { initR2, uploadAttachment, getAttachmentType } from './r2.js';
 
 // --- Environment validation ---
@@ -60,6 +60,21 @@ interface ArchivedMessage {
   replyToMessageId: string | null; content: string | null; messageAt: string; editedAt: string | null;
   attachments: Array<{ url: string; name: string; contentType: string }>;
 }
+interface AttachmentRetry {
+  messageId: string; channelId: string; filename: string; sourceUrl: string;
+}
+async function persistAttachmentRetry(job: AttachmentRetry): Promise<void> {
+  const archivedUrl = await uploadAttachment(job.sourceUrl, job.channelId, job.messageId, job.filename);
+  await saveRetriedAttachment({ ...job, archivedUrl });
+}
+const attachmentOutbox = new ArchiveOutbox<AttachmentRetry>(
+  path.resolve(process.env.DISCORD_ATTACHMENT_OUTBOX_DIR ?? '.state/attachment-outbox'),
+  persistAttachmentRetry,
+);
+async function drainAttachments(): Promise<void> {
+  try { await attachmentOutbox.drain(); }
+  catch { console.error('[R2] Attachment retry failed; durable entry retained'); }
+}
 async function persistArchived(message: ArchivedMessage): Promise<void> {
   if (message.guildId && message.channelName) await saveChannel(message.channelId, message.guildId, message.channelName);
   const userId = await saveUser(message.nativeAuthorId, message.displayName, message.username, message.guildNickname);
@@ -67,7 +82,11 @@ async function persistArchived(message: ArchivedMessage): Promise<void> {
   for (const att of message.attachments) {
     let url = att.url;
     try { url = await uploadAttachment(att.url, message.channelId, message.messageId, att.name); }
-    catch { console.error('[R2] Attachment upload failed; retaining CDN reference'); }
+    catch {
+      await attachmentOutbox.enqueue({ messageId: message.messageId, channelId: message.channelId,
+        filename: att.name, sourceUrl: att.url });
+      console.error('[R2] Attachment upload failed; queued retry and retained CDN reference');
+    }
     attachments.push({ type: getAttachmentType(att.contentType, att.name), url, filename: att.name });
   }
   await saveMessage({ ...message, userId, attachments,
@@ -92,7 +111,9 @@ async function handleMessage(message: Message): Promise<void> {
   } catch { console.error(`[ARCHIVE] Could not durably queue message ${message.id}`); }
 }
 const retryTimer = setInterval(() => { void drainArchive(); }, 30_000);
+const attachmentRetryTimer = setInterval(() => { void drainAttachments(); }, 30_000);
 void drainArchive();
+void drainAttachments();
 
 // --- Event listeners ---
 
@@ -135,6 +156,7 @@ client.on('messageUpdate', async (_oldMessage, newMessage) => {
 function shutdown(): void {
   console.log('Shutting down...');
   clearInterval(retryTimer);
+  clearInterval(attachmentRetryTimer);
   if (policyTimer) clearInterval(policyTimer);
   client.destroy();
   process.exit(0);
